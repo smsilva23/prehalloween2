@@ -160,14 +160,12 @@
 
         .status.disconnected { background: rgba(64,10,18,0.55); color: #ffb4a8; border-color: rgba(255,106,0,0.35); }
 
+        /* Layout for chat + content */
+        .main-layout { display: flex; align-items: flex-start; gap: 20px; width: 100%; max-width: 1100px; }
+        .content-stack { display: flex; flex-direction: column; align-items: center; gap: 16px; flex: 1; }
+
         /* Matrix-style chat */
-        .chat-wrapper {
-            position: fixed;
-            left: 16px;
-            bottom: 16px;
-            width: 260px;
-            z-index: 20;
-        }
+        .chat-wrapper { width: 260px; }
         .chat-box {
             background: linear-gradient(180deg, rgba(0,10,0,0.85), rgba(0,20,0,0.6));
             border: 1px solid rgba(0,255,128,0.35);
@@ -224,45 +222,42 @@
 <body>
     <h1>Spooky Collab Canvas</h1>
     
-    <div class="canvas-container" id="canvasContainer"></div>
-    
-    <div class="controls">
-        <div class="color-info">
-            <div class="color-circle" id="myColorCircle"></div>
-            <span id="myColorText">Your Color</span>
-        </div>
-        
-        <div class="color-info">
-            <div class="color-circle" id="otherColorCircle"></div>
-            <span id="otherColorText">Other User</span>
-        </div>
-        
-        <input type="color" id="colorPicker" value="#ff6a00" title="Pick your color" />
-        <button class="btn" id="applyColorBtn">Set Color</button>
-
-        <div class="tool-toggle" role="group" aria-label="Brush tools">
-            <button class="btn tool active" id="toolPen" aria-pressed="true" title="Pen">✏️ Pen</button>
-            <button class="btn tool" id="toolSkull" aria-pressed="false" title="Skull Brush">💀 Skull</button>
-        </div>
-
-        <button class="btn" id="clearBtn">Clear Canvas</button>
-    </div>
-    
-    <div class="status" id="status">Connecting...</div>
-
-    <div class="chat-wrapper" aria-live="polite">
+    <div class="main-layout">
+        <div class="chat-wrapper" aria-live="polite">
         <div class="chat-box">
-            <div class="chat-header">Matrix Chat<span id="chatUsersHint"></span></div>
+            <div class="chat-header">Chat<span id="chatUsersHint"></span></div>
             <div class="chat-body" id="chatBody"></div>
-            <div class="chat-login" id="chatLogin">
-                <input type="text" id="usernameInput" maxlength="20" placeholder="Enter username"/>
-                <button class="btn" id="setUsernameBtn">Join</button>
-            </div>
-            <div class="chat-input-area" id="chatInputArea" style="display:none">
+            <div class="chat-input-area" id="chatInputArea">
                 <input type="text" id="chatInput" placeholder="Type a message..."/>
                 <button class="btn" id="sendChatBtn">Send</button>
             </div>
-            <div class="chat-footer-note">Login required to chat</div>
+            <div class="chat-footer-note">Be kind. Messages are public.</div>
+        </div>
+    </div>
+        <div class="content-stack">
+            <div class="canvas-container" id="canvasContainer"></div>
+            <div class="controls">
+                <div class="color-info">
+                    <div class="color-circle" id="myColorCircle"></div>
+                    <span id="myColorText">Your Color</span>
+                </div>
+                
+                <div class="color-info">
+                    <div class="color-circle" id="otherColorCircle"></div>
+                    <span id="otherColorText">Other User</span>
+                </div>
+                
+                <input type="color" id="colorPicker" value="#ff6a00" title="Pick your color" />
+                <button class="btn" id="applyColorBtn">Set Color</button>
+
+                <div class="tool-toggle" role="group" aria-label="Brush tools">
+                    <button class="btn tool active" id="toolPen" aria-pressed="true" title="Pen">✏️ Pen</button>
+                    <button class="btn tool" id="toolSkull" aria-pressed="false" title="Skull Brush">💀 Skull</button>
+                </div>
+
+                <button class="btn" id="clearBtn">Clear Canvas</button>
+            </div>
+            <div class="status" id="status">Connecting...</div>
         </div>
     </div>
 
@@ -274,7 +269,7 @@
         let isDrawing = false;
         let lastX, lastY;
         const peers = new Map(); // userId -> { color, drawing, lastX, lastY }
-        let myUsername = '';
+        // no username required for chat
 
         // Initialize p5.js sketch
         function setup() {
@@ -380,22 +375,6 @@
             // Clear canvas event
             socket.on('canvasCleared', () => {
                 background(255);
-            });
-
-            // Username set confirmation
-            socket.on('usernameSet', (data) => {
-                myUsername = (data && data.username) || '';
-                const login = document.getElementById('chatLogin');
-                const inputArea = document.getElementById('chatInputArea');
-                if (login) login.style.display = 'none';
-                if (inputArea) inputArea.style.display = 'flex';
-                appendSystemMessage(`Welcome, ${myUsername}`);
-            });
-
-            // Username error
-            socket.on('usernameError', (data) => {
-                const msg = (data && data.message) || 'Invalid username';
-                appendSystemMessage(msg);
             });
 
             // Incoming chat messages
@@ -595,17 +574,6 @@
         }
         penBtn.addEventListener('click', () => setTool('pen'));
         skullBtn.addEventListener('click', () => setTool('skull'));
-
-        // Chat: set username
-        document.getElementById('setUsernameBtn').addEventListener('click', () => {
-            const input = document.getElementById('usernameInput');
-            const val = (input && input.value || '').trim();
-            if (!val) return appendSystemMessage('Please enter a username');
-            socket.emit('setUsername', { username: val });
-        });
-        document.getElementById('usernameInput').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') document.getElementById('setUsernameBtn').click();
-        });
 
         // Chat: send message
         document.getElementById('sendChatBtn').addEventListener('click', () => {

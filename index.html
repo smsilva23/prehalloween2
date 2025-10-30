@@ -187,15 +187,20 @@
             border-bottom: 1px solid rgba(0,255,128,0.25);
         }
         .chat-body {
-            max-height: 220px;
+            max-height: 260px;
+            min-height: 140px;
             overflow-y: auto;
             padding: 8px;
             font-family: "Courier New", Courier, monospace;
             scrollbar-width: thin;
+            background: rgba(0,0,0,0.18);
         }
         .chat-msg {
             margin: 4px 0;
+            color: #c9ffe5;
             line-height: 1.25;
+            word-break: break-word;
+            white-space: normal;
         }
         .chat-msg .name { color: #00ff88; }
         .chat-msg .time { color: rgba(0,255,136,0.6); font-size: 11px; margin-left: 6px; }
@@ -253,6 +258,11 @@
                 <div class="tool-toggle" role="group" aria-label="Brush tools">
                     <button class="btn tool active" id="toolPen" aria-pressed="true" title="Pen">✏️ Pen</button>
                     <button class="btn tool" id="toolSkull" aria-pressed="false" title="Skull Brush">💀 Skull</button>
+                    <button class="btn tool" id="toolPumpkin" aria-pressed="false" title="Pumpkin Brush">🎃 Pumpkin</button>
+                    <button class="btn tool" id="toolZombie" aria-pressed="false" title="Zombie Brush">🧟 Zombie</button>
+                    <button class="btn tool" id="toolSpider" aria-pressed="false" title="Spider Web Brush">🕸️ Web</button>
+                    <button class="btn tool" id="toolBat" aria-pressed="false" title="Bat Brush">🦇 Bat</button>
+                    <button class="btn tool" id="toolGhost" aria-pressed="false" title="Ghost Brush">👻 Ghost</button>
                 </div>
 
                 <button class="btn" id="clearBtn">Clear Canvas</button>
@@ -265,7 +275,8 @@
         let socket;
         let myId;
         let myColor;
-        let currentTool = 'pen'; // 'pen' | 'skull'
+        let currentTool = 'pen'; // 'pen' | 'emoji'
+        let currentEmoji = '💀';
         let isDrawing = false;
         let lastX, lastY;
         const peers = new Map(); // userId -> { color, drawing, lastX, lastY }
@@ -333,11 +344,11 @@
                 peer.lastX = data.x;
                 peer.lastY = data.y;
                 peers.set(userId, peer);
-                if (data.tool === 'skull') {
+                if (data.tool === 'emoji' && data.emoji) {
                     push();
                     noStroke();
                     textSize(28);
-                    text('💀', data.x, data.y);
+                    text(data.emoji, data.x, data.y);
                     pop();
                 } else {
                     stroke(peer.color);
@@ -351,11 +362,11 @@
                 const userId = data.userId;
                 const peer = peers.get(userId);
                 if (!peer || !peer.drawing) return;
-                if (data.tool === 'skull') {
+                if (data.tool === 'emoji' && data.emoji) {
                     push();
                     noStroke();
                     textSize(28);
-                    text('💀', data.x, data.y);
+                    text(data.emoji, data.x, data.y);
                     pop();
                 } else {
                     stroke(peer.color);
@@ -409,11 +420,11 @@
                 lastY = mouseY;
                 
                 // Draw start
-                if (currentTool === 'skull') {
+                if (currentTool === 'emoji') {
                     push();
                     noStroke();
                     textSize(28);
-                    text('💀', mouseX, mouseY);
+                    text(currentEmoji, mouseX, mouseY);
                     pop();
                 } else {
                     stroke(myColor);
@@ -426,18 +437,19 @@
                     x: mouseX,
                     y: mouseY,
                     color: myColor,
-                    tool: currentTool
+                    tool: currentTool,
+                    emoji: currentTool === 'emoji' ? currentEmoji : undefined
                 });
             }
         }
 
         function mouseDragged() {
             if (isDrawing && myColor) {
-                if (currentTool === 'skull') {
+                if (currentTool === 'emoji') {
                     push();
                     noStroke();
                     textSize(28);
-                    text('💀', mouseX, mouseY);
+                    text(currentEmoji, mouseX, mouseY);
                     pop();
                 } else {
                     // Draw line
@@ -451,7 +463,8 @@
                     x: mouseX,
                     y: mouseY,
                     color: myColor,
-                    tool: currentTool
+                    tool: currentTool,
+                    emoji: currentTool === 'emoji' ? currentEmoji : undefined
                 });
                 
                 lastX = mouseX;
@@ -504,11 +517,11 @@
                         lastY = stroke.y;
                         
                         console.log(`Drawing start at (${stroke.x}, ${stroke.y}) with color ${stroke.color}`);
-                        if (stroke.tool === 'skull') {
+                        if (stroke.tool === 'emoji' && stroke.emoji) {
                             push();
                             noStroke();
                             textSize(28);
-                            text('💀', stroke.x, stroke.y);
+                            text(stroke.emoji, stroke.x, stroke.y);
                             pop();
                         } else {
                             stroke(stroke.color);
@@ -518,11 +531,11 @@
                         strokeCount++;
                     } else if (stroke.type === 'move' && currentStroke) {
                         console.log(`Drawing line from (${lastX}, ${lastY}) to (${stroke.x}, ${stroke.y}) with color ${stroke.color}`);
-                        if (stroke.tool === 'skull') {
+                        if (stroke.tool === 'emoji' && stroke.emoji) {
                             push();
                             noStroke();
                             textSize(28);
-                            text('💀', stroke.x, stroke.y);
+                            text(stroke.emoji, stroke.x, stroke.y);
                             pop();
                         } else {
                             stroke(stroke.color);
@@ -565,15 +578,36 @@
         // Tool toggle handlers
         const penBtn = document.getElementById('toolPen');
         const skullBtn = document.getElementById('toolSkull');
+        const pumpkinBtn = document.getElementById('toolPumpkin');
+        const zombieBtn = document.getElementById('toolZombie');
+        const spiderBtn = document.getElementById('toolSpider');
+        const batBtn = document.getElementById('toolBat');
+        const ghostBtn = document.getElementById('toolGhost');
         function setTool(tool) {
             currentTool = tool;
             penBtn.classList.toggle('active', tool === 'pen');
-            skullBtn.classList.toggle('active', tool === 'skull');
+            const isEmoji = tool === 'emoji';
+            skullBtn.classList.toggle('active', isEmoji && currentEmoji === '💀');
+            pumpkinBtn.classList.toggle('active', isEmoji && currentEmoji === '🎃');
+            zombieBtn.classList.toggle('active', isEmoji && currentEmoji === '🧟');
+            spiderBtn.classList.toggle('active', isEmoji && currentEmoji === '🕸️');
+            batBtn.classList.toggle('active', isEmoji && currentEmoji === '🦇');
+            ghostBtn.classList.toggle('active', isEmoji && currentEmoji === '👻');
             penBtn.setAttribute('aria-pressed', tool === 'pen' ? 'true' : 'false');
-            skullBtn.setAttribute('aria-pressed', tool === 'skull' ? 'true' : 'false');
+            skullBtn.setAttribute('aria-pressed', isEmoji && currentEmoji === '💀' ? 'true' : 'false');
+            pumpkinBtn.setAttribute('aria-pressed', isEmoji && currentEmoji === '🎃' ? 'true' : 'false');
+            zombieBtn.setAttribute('aria-pressed', isEmoji && currentEmoji === '🧟' ? 'true' : 'false');
+            spiderBtn.setAttribute('aria-pressed', isEmoji && currentEmoji === '🕸️' ? 'true' : 'false');
+            batBtn.setAttribute('aria-pressed', isEmoji && currentEmoji === '🦇' ? 'true' : 'false');
+            ghostBtn.setAttribute('aria-pressed', isEmoji && currentEmoji === '👻' ? 'true' : 'false');
         }
         penBtn.addEventListener('click', () => setTool('pen'));
-        skullBtn.addEventListener('click', () => setTool('skull'));
+        skullBtn.addEventListener('click', () => { currentEmoji = '💀'; setTool('emoji'); });
+        pumpkinBtn.addEventListener('click', () => { currentEmoji = '🎃'; setTool('emoji'); });
+        zombieBtn.addEventListener('click', () => { currentEmoji = '🧟'; setTool('emoji'); });
+        spiderBtn.addEventListener('click', () => { currentEmoji = '🕸️'; setTool('emoji'); });
+        batBtn.addEventListener('click', () => { currentEmoji = '🦇'; setTool('emoji'); });
+        ghostBtn.addEventListener('click', () => { currentEmoji = '👻'; setTool('emoji'); });
 
         // Chat: send message
         document.getElementById('sendChatBtn').addEventListener('click', () => {

@@ -159,6 +159,66 @@
         }
 
         .status.disconnected { background: rgba(64,10,18,0.55); color: #ffb4a8; border-color: rgba(255,106,0,0.35); }
+
+        /* Matrix-style chat */
+        .chat-wrapper {
+            position: fixed;
+            left: 16px;
+            bottom: 16px;
+            width: 260px;
+            z-index: 20;
+        }
+        .chat-box {
+            background: linear-gradient(180deg, rgba(0,10,0,0.85), rgba(0,20,0,0.6));
+            border: 1px solid rgba(0,255,128,0.35);
+            border-radius: 12px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.6), inset 0 0 28px rgba(0,255,128,0.12);
+            overflow: hidden;
+            color: #b7f7d0;
+            backdrop-filter: blur(4px);
+        }
+        .chat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 10px;
+            font-weight: 800;
+            letter-spacing: .6px;
+            color: #00ff88;
+            text-shadow: 0 0 8px rgba(0,255,136,0.6);
+            border-bottom: 1px solid rgba(0,255,128,0.25);
+        }
+        .chat-body {
+            max-height: 220px;
+            overflow-y: auto;
+            padding: 8px;
+            font-family: "Courier New", Courier, monospace;
+            scrollbar-width: thin;
+        }
+        .chat-msg {
+            margin: 4px 0;
+            line-height: 1.25;
+        }
+        .chat-msg .name { color: #00ff88; }
+        .chat-msg .time { color: rgba(0,255,136,0.6); font-size: 11px; margin-left: 6px; }
+        .chat-input-area { display: flex; gap: 6px; padding: 8px; border-top: 1px solid rgba(0,255,128,0.25); background: rgba(0,0,0,0.2); }
+        .chat-input-area input[type="text"] {
+            flex: 1;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(0,255,128,0.25);
+            background: rgba(0,0,0,0.35);
+            color: #b7f7d0;
+        }
+        .chat-input-area .btn {
+            background: linear-gradient(180deg, rgba(0,255,136,0.9), rgba(0,200,120,0.8));
+            color: #002a16;
+            border-color: rgba(0,255,136,0.5);
+            box-shadow: 0 8px 18px rgba(0,255,136,0.25), inset 0 -4px 8px rgba(0,0,0,0.25);
+        }
+        .chat-login { display: flex; gap: 6px; padding: 8px; border-top: 1px solid rgba(0,255,128,0.25); background: rgba(0,0,0,0.2); }
+        .chat-login input[type="text"] { flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(0,255,128,0.25); background: rgba(0,0,0,0.35); color: #b7f7d0; }
+        .chat-footer-note { padding: 6px 10px; font-size: 12px; color: rgba(0,255,136,0.7); border-top: 1px dashed rgba(0,255,128,0.25); }
     </style>
 </head>
 <body>
@@ -190,6 +250,22 @@
     
     <div class="status" id="status">Connecting...</div>
 
+    <div class="chat-wrapper" aria-live="polite">
+        <div class="chat-box">
+            <div class="chat-header">Matrix Chat<span id="chatUsersHint"></span></div>
+            <div class="chat-body" id="chatBody"></div>
+            <div class="chat-login" id="chatLogin">
+                <input type="text" id="usernameInput" maxlength="20" placeholder="Enter username"/>
+                <button class="btn" id="setUsernameBtn">Join</button>
+            </div>
+            <div class="chat-input-area" id="chatInputArea" style="display:none">
+                <input type="text" id="chatInput" placeholder="Type a message..."/>
+                <button class="btn" id="sendChatBtn">Send</button>
+            </div>
+            <div class="chat-footer-note">Login required to chat</div>
+        </div>
+    </div>
+
     <script>
         let socket;
         let myId;
@@ -198,6 +274,7 @@
         let isDrawing = false;
         let lastX, lastY;
         const peers = new Map(); // userId -> { color, drawing, lastX, lastY }
+        let myUsername = '';
 
         // Initialize p5.js sketch
         function setup() {
@@ -303,6 +380,30 @@
             // Clear canvas event
             socket.on('canvasCleared', () => {
                 background(255);
+            });
+
+            // Username set confirmation
+            socket.on('usernameSet', (data) => {
+                myUsername = (data && data.username) || '';
+                const login = document.getElementById('chatLogin');
+                const inputArea = document.getElementById('chatInputArea');
+                if (login) login.style.display = 'none';
+                if (inputArea) inputArea.style.display = 'flex';
+                appendSystemMessage(`Welcome, ${myUsername}`);
+            });
+
+            // Username error
+            socket.on('usernameError', (data) => {
+                const msg = (data && data.message) || 'Invalid username';
+                appendSystemMessage(msg);
+            });
+
+            // Incoming chat messages
+            socket.on('chatMessage', (data) => {
+                const from = data && data.username ? data.username : 'Unknown';
+                const text = data && data.message ? data.message : '';
+                const ts = data && data.timestamp ? data.timestamp : Date.now();
+                appendChatMessage(from, text, ts);
             });
             
             // Handle canvas state restoration for new users
@@ -494,6 +595,59 @@
         }
         penBtn.addEventListener('click', () => setTool('pen'));
         skullBtn.addEventListener('click', () => setTool('skull'));
+
+        // Chat: set username
+        document.getElementById('setUsernameBtn').addEventListener('click', () => {
+            const input = document.getElementById('usernameInput');
+            const val = (input && input.value || '').trim();
+            if (!val) return appendSystemMessage('Please enter a username');
+            socket.emit('setUsername', { username: val });
+        });
+        document.getElementById('usernameInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('setUsernameBtn').click();
+        });
+
+        // Chat: send message
+        document.getElementById('sendChatBtn').addEventListener('click', () => {
+            const input = document.getElementById('chatInput');
+            const text = (input && input.value || '').trim();
+            if (!text) return;
+            socket.emit('chatMessage', { message: text });
+            input.value = '';
+        });
+        document.getElementById('chatInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('sendChatBtn').click();
+        });
+
+        // Chat helpers
+        function appendChatMessage(username, message, ts) {
+            const body = document.getElementById('chatBody');
+            if (!body) return;
+            const time = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const div = document.createElement('div');
+            div.className = 'chat-msg';
+            div.innerHTML = `<span class="name">${escapeHtml(username)}</span><span class="time">[${time}]</span>: ${escapeHtml(message)}`;
+            body.appendChild(div);
+            body.scrollTop = body.scrollHeight;
+        }
+        function appendSystemMessage(message) {
+            const body = document.getElementById('chatBody');
+            if (!body) return;
+            const div = document.createElement('div');
+            div.className = 'chat-msg';
+            div.style.color = 'rgba(0,255,136,0.8)';
+            div.textContent = `> ${message}`;
+            body.appendChild(div);
+            body.scrollTop = body.scrollHeight;
+        }
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
 
         // Prevent context menu on canvas
         document.addEventListener('contextmenu', (e) => {

@@ -160,85 +160,15 @@
 
         .status.disconnected { background: rgba(64,10,18,0.55); color: #ffb4a8; border-color: rgba(255,106,0,0.35); }
 
-        /* Layout for chat + content */
-        .main-layout { display: flex; align-items: flex-start; gap: 20px; width: 100%; max-width: 1100px; }
-        .content-stack { display: flex; flex-direction: column; align-items: center; gap: 16px; flex: 1; }
-
-        /* Matrix-style chat */
-        .chat-wrapper { width: 260px; }
-        .chat-box {
-            background: linear-gradient(180deg, rgba(0,10,0,0.85), rgba(0,20,0,0.6));
-            border: 1px solid rgba(0,255,128,0.35);
-            border-radius: 12px;
-            box-shadow: 0 12px 30px rgba(0,0,0,0.6), inset 0 0 28px rgba(0,255,128,0.12);
-            overflow: hidden;
-            color: #b7f7d0;
-            backdrop-filter: blur(4px);
-        }
-        .chat-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px 10px;
-            font-weight: 800;
-            letter-spacing: .6px;
-            color: #00ff88;
-            text-shadow: 0 0 8px rgba(0,255,136,0.6);
-            border-bottom: 1px solid rgba(0,255,128,0.25);
-        }
-        .chat-body {
-            max-height: 260px;
-            min-height: 140px;
-            overflow-y: auto;
-            padding: 8px;
-            font-family: "Courier New", Courier, monospace;
-            scrollbar-width: thin;
-            background: rgba(0,0,0,0.18);
-        }
-        .chat-msg {
-            margin: 4px 0;
-            color: #c9ffe5;
-            line-height: 1.25;
-            word-break: break-word;
-            white-space: normal;
-        }
-        .chat-msg .name { color: #00ff88; }
-        .chat-msg .time { color: rgba(0,255,136,0.6); font-size: 11px; margin-left: 6px; }
-        .chat-input-area { display: flex; gap: 6px; padding: 8px; border-top: 1px solid rgba(0,255,128,0.25); background: rgba(0,0,0,0.2); }
-        .chat-input-area input[type="text"] {
-            flex: 1;
-            padding: 8px 10px;
-            border-radius: 8px;
-            border: 1px solid rgba(0,255,128,0.25);
-            background: rgba(0,0,0,0.35);
-            color: #b7f7d0;
-        }
-        .chat-input-area .btn {
-            background: linear-gradient(180deg, rgba(0,255,136,0.9), rgba(0,200,120,0.8));
-            color: #002a16;
-            border-color: rgba(0,255,136,0.5);
-            box-shadow: 0 8px 18px rgba(0,255,136,0.25), inset 0 -4px 8px rgba(0,0,0,0.25);
-        }
-        .chat-login { display: flex; gap: 6px; padding: 8px; border-top: 1px solid rgba(0,255,128,0.25); background: rgba(0,0,0,0.2); }
-        .chat-login input[type="text"] { flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(0,255,128,0.25); background: rgba(0,0,0,0.35); color: #b7f7d0; }
-        .chat-footer-note { padding: 6px 10px; font-size: 12px; color: rgba(0,255,136,0.7); border-top: 1px dashed rgba(0,255,128,0.25); }
+        /* Layout without chat */
+        .main-layout { display: flex; align-items: flex-start; gap: 20px; width: 100%; max-width: 1100px; justify-content: center; }
+        .content-stack { display: flex; flex-direction: column; align-items: center; gap: 16px; flex: 1; max-width: 800px; }
     </style>
 </head>
 <body>
     <h1>Spooky Collab Canvas</h1>
     
     <div class="main-layout">
-        <div class="chat-wrapper" aria-live="polite">
-        <div class="chat-box">
-            <div class="chat-header">Chat<span id="chatUsersHint"></span></div>
-            <div class="chat-body" id="chatBody"></div>
-            <div class="chat-input-area" id="chatInputArea">
-                <input type="text" id="chatInput" placeholder="Type a message..."/>
-                <button class="btn" id="sendChatBtn">Send</button>
-            </div>
-            <div class="chat-footer-note">Be kind. Messages are public.</div>
-        </div>
-    </div>
         <div class="content-stack">
             <div class="canvas-container" id="canvasContainer"></div>
             <div class="controls">
@@ -388,13 +318,7 @@
                 background(255);
             });
 
-            // Incoming chat messages
-            socket.on('chatMessage', (data) => {
-                const from = data && data.username ? data.username : 'Unknown';
-                const text = data && data.message ? data.message : '';
-                const ts = data && data.timestamp ? data.timestamp : Date.now();
-                appendChatMessage(from, text, ts);
-            });
+            // Chat removed
             
             // Handle canvas state restoration for new users
             socket.on('canvasState', (state) => {
@@ -609,47 +533,7 @@
         batBtn.addEventListener('click', () => { currentEmoji = '🦇'; setTool('emoji'); });
         ghostBtn.addEventListener('click', () => { currentEmoji = '👻'; setTool('emoji'); });
 
-        // Chat: send message
-        document.getElementById('sendChatBtn').addEventListener('click', () => {
-            const input = document.getElementById('chatInput');
-            const text = (input && input.value || '').trim();
-            if (!text) return;
-            socket.emit('chatMessage', { message: text });
-            input.value = '';
-        });
-        document.getElementById('chatInput').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') document.getElementById('sendChatBtn').click();
-        });
-
-        // Chat helpers
-        function appendChatMessage(username, message, ts) {
-            const body = document.getElementById('chatBody');
-            if (!body) return;
-            const time = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const div = document.createElement('div');
-            div.className = 'chat-msg';
-            div.innerHTML = `<span class="name">${escapeHtml(username)}</span><span class="time">[${time}]</span>: ${escapeHtml(message)}`;
-            body.appendChild(div);
-            body.scrollTop = body.scrollHeight;
-        }
-        function appendSystemMessage(message) {
-            const body = document.getElementById('chatBody');
-            if (!body) return;
-            const div = document.createElement('div');
-            div.className = 'chat-msg';
-            div.style.color = 'rgba(0,255,136,0.8)';
-            div.textContent = `> ${message}`;
-            body.appendChild(div);
-            body.scrollTop = body.scrollHeight;
-        }
-        function escapeHtml(str) {
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        }
+        // Chat removed
 
         // Prevent context menu on canvas
         document.addEventListener('contextmenu', (e) => {

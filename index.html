@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaborative Drawing Canvas</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #f0f0f0;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .canvas-container {
+            border: 3px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            background: white;
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .color-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            background: white;
+            border-radius: 25px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .color-circle {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid #333;
+        }
+
+        .clear-btn {
+            padding: 10px 20px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background 0.3s ease;
+        }
+
+        .clear-btn:hover {
+            background: #cc3333;
+        }
+
+        .status {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #e8f5e8;
+            border-radius: 25px;
+            color: #2d5a2d;
+            font-weight: bold;
+        }
+
+        .status.disconnected {
+            background: #ffe8e8;
+            color: #5a2d2d;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 Collaborative Drawing Canvas</h1>
+    
+    <div class="canvas-container" id="canvasContainer"></div>
+    
+    <div class="controls">
+        <div class="color-info">
+            <div class="color-circle" id="myColorCircle"></div>
+            <span id="myColorText">Your Color</span>
+        </div>
+        
+        <div class="color-info">
+            <div class="color-circle" id="otherColorCircle"></div>
+            <span id="otherColorText">Other User</span>
+        </div>
+        
+        <button class="clear-btn" id="clearBtn">Clear Canvas</button>
+    </div>
+    
+    <div class="status" id="status">Connecting...</div>
+
+    <script>
+        let socket;
+        let myColor;
+        let otherColor;
+        let isDrawing = false;
+        let lastX, lastY;
+        let otherUserDrawing = false;
+        let otherLastX, otherLastY;
+
+        // Initialize p5.js sketch
+        function setup() {
+            const canvas = createCanvas(500, 500);
+            canvas.parent('canvasContainer');
+            background(255);
+            
+            // Initialize Socket.IO
+            socket = io();
+            
+            // Assign colors based on connection order
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                document.getElementById('status').textContent = 'Connected - Start drawing!';
+                document.getElementById('status').className = 'status';
+                
+                // Request color assignment
+                socket.emit('requestColor');
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+                document.getElementById('status').textContent = 'Disconnected';
+                document.getElementById('status').className = 'status disconnected';
+            });
+            
+            // Handle color assignment
+            socket.on('colorAssigned', (data) => {
+                myColor = data.color;
+                document.getElementById('myColorCircle').style.backgroundColor = myColor;
+                document.getElementById('myColorText').textContent = `Your Color (${data.colorName})`;
+                console.log('My color:', myColor);
+            });
+            
+            // Handle other user's color
+            socket.on('otherUserColor', (data) => {
+                otherColor = data.color;
+                document.getElementById('otherColorCircle').style.backgroundColor = otherColor;
+                document.getElementById('otherColorText').textContent = `Other User (${data.colorName})`;
+                console.log('Other user color:', otherColor);
+            });
+            
+            // Handle drawing data from other users
+            socket.on('drawing', (data) => {
+                if (data.color !== myColor) {
+                    otherUserDrawing = true;
+                    otherLastX = data.x;
+                    otherLastY = data.y;
+                    
+                    stroke(data.color);
+                    strokeWeight(3);
+                    point(data.x, data.y);
+                }
+            });
+            
+            socket.on('drawingStart', (data) => {
+                if (data.color !== myColor) {
+                    otherUserDrawing = true;
+                    otherLastX = data.x;
+                    otherLastY = data.y;
+                    
+                    stroke(data.color);
+                    strokeWeight(3);
+                    point(data.x, data.y);
+                }
+            });
+            
+            socket.on('drawingMove', (data) => {
+                if (data.color !== myColor && otherUserDrawing) {
+                    stroke(data.color);
+                    strokeWeight(3);
+                    line(otherLastX, otherLastY, data.x, data.y);
+                    otherLastX = data.x;
+                    otherLastY = data.y;
+                }
+            });
+            
+            socket.on('drawingEnd', () => {
+                otherUserDrawing = false;
+            });
+            
+            // Clear canvas event
+            socket.on('canvasCleared', () => {
+                background(255);
+            });
+            
+            // Handle canvas state restoration for new users
+            socket.on('canvasState', (state) => {
+                console.log('Received canvas state:', state.length, 'strokes');
+                console.log('First few strokes:', state.slice(0, 5));
+                
+                // Wait for next frame to ensure canvas is ready
+                setTimeout(() => {
+                    console.log('About to restore canvas state...');
+                    restoreCanvasState(state);
+                }, 500);
+            });
+        }
+
+        function draw() {
+            // Drawing logic is handled in mouse events
+        }
+
+        function mousePressed() {
+            if (myColor) {
+                isDrawing = true;
+                lastX = mouseX;
+                lastY = mouseY;
+                
+                // Draw point
+                stroke(myColor);
+                strokeWeight(3);
+                point(mouseX, mouseY);
+                
+                // Send to other users
+                socket.emit('drawingStart', {
+                    x: mouseX,
+                    y: mouseY,
+                    color: myColor
+                });
+            }
+        }
+
+        function mouseDragged() {
+            if (isDrawing && myColor) {
+                // Draw line
+                stroke(myColor);
+                strokeWeight(3);
+                line(lastX, lastY, mouseX, mouseY);
+                
+                // Send to other users
+                socket.emit('drawingMove', {
+                    x: mouseX,
+                    y: mouseY,
+                    color: myColor
+                });
+                
+                lastX = mouseX;
+                lastY = mouseY;
+            }
+        }
+
+        function mouseReleased() {
+            if (isDrawing) {
+                isDrawing = false;
+                socket.emit('drawingEnd');
+            }
+        }
+
+        // Clear canvas function
+        function clearCanvas() {
+            background(255);
+            socket.emit('clearCanvas');
+        }
+
+        // Restore canvas state from stored strokes
+        function restoreCanvasState(state) {
+            console.log('=== Starting canvas restoration ===');
+            console.log('Canvas size:', width, 'x', height);
+            console.log('Number of strokes to restore:', state.length);
+            
+            // Clear canvas first
+            background(255);
+            
+            // Force a redraw
+            redraw();
+            
+            let currentStroke = null;
+            let lastX = 0, lastY = 0;
+            let strokeCount = 0;
+            let moveCount = 0;
+            
+            // Process strokes in batches to avoid blocking
+            let i = 0;
+            function processBatch() {
+                const batchSize = 10;
+                const endIndex = Math.min(i + batchSize, state.length);
+                
+                for (; i < endIndex; i++) {
+                    const stroke = state[i];
+                    
+                    if (stroke.type === 'start') {
+                        currentStroke = stroke;
+                        lastX = stroke.x;
+                        lastY = stroke.y;
+                        
+                        console.log(`Drawing start at (${stroke.x}, ${stroke.y}) with color ${stroke.color}`);
+                        stroke(stroke.color);
+                        strokeWeight(3);
+                        point(stroke.x, stroke.y);
+                        strokeCount++;
+                    } else if (stroke.type === 'move' && currentStroke) {
+                        console.log(`Drawing line from (${lastX}, ${lastY}) to (${stroke.x}, ${stroke.y}) with color ${stroke.color}`);
+                        stroke(stroke.color);
+                        strokeWeight(3);
+                        line(lastX, lastY, stroke.x, stroke.y);
+                        lastX = stroke.x;
+                        lastY = stroke.y;
+                        moveCount++;
+                    } else if (stroke.type === 'end') {
+                        console.log('Stroke ended');
+                        currentStroke = null;
+                    }
+                }
+                
+                // If there are more strokes, process next batch
+                if (i < state.length) {
+                    setTimeout(processBatch, 10);
+                } else {
+                    console.log('=== Canvas restoration complete ===');
+                    console.log(`Drew ${strokeCount} start points and ${moveCount} line segments`);
+                }
+            }
+            
+            // Start processing
+            processBatch();
+        }
+
+        // Event listeners
+        document.getElementById('clearBtn').addEventListener('click', clearCanvas);
+
+        // Prevent context menu on canvas
+        document.addEventListener('contextmenu', (e) => {
+            if (e.target.tagName === 'CANVAS') {
+                e.preventDefault();
+            }
+        });
+    </script>
+</body>
+</html>

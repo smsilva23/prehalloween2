@@ -83,6 +83,7 @@ io.on('connection', (socket) => {
       x: data.x,
       y: data.y,
       color: data.color,
+      tool: data.tool,
       timestamp: Date.now()
     });
     
@@ -90,6 +91,7 @@ io.on('connection', (socket) => {
       x: data.x,
       y: data.y,
       color: data.color,
+      tool: data.tool,
       userId: socket.id
     });
   });
@@ -102,6 +104,7 @@ io.on('connection', (socket) => {
       x: data.x,
       y: data.y,
       color: data.color,
+      tool: data.tool,
       timestamp: Date.now()
     });
     
@@ -109,6 +112,7 @@ io.on('connection', (socket) => {
       x: data.x,
       y: data.y,
       color: data.color,
+      tool: data.tool,
       userId: socket.id
     });
   });

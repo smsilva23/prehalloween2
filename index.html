@@ -124,6 +124,29 @@
         input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
         input[type="color"]::-webkit-color-swatch { border: none; border-radius: 10px; }
 
+        .tool-toggle {
+            display: flex;
+            gap: 8px;
+            padding: 6px;
+            border-radius: 999px;
+            background: rgba(12,8,22,0.9);
+            border: 1px solid rgba(122,60,255,0.35);
+            box-shadow: inset 0 0 18px rgba(122,60,255,0.12);
+        }
+
+        .btn.tool {
+            background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06));
+            color: var(--text);
+            border-color: rgba(255,255,255,0.18);
+            text-shadow: none;
+        }
+        .btn.tool.active {
+            background: linear-gradient(180deg, rgba(255,106,0,0.92), rgba(255,106,0,0.75));
+            color: #1b0e32;
+            box-shadow: 0 8px 24px rgba(255,106,0,0.35), inset 0 -4px 10px rgba(0,0,0,0.25);
+            border-color: rgba(255,106,0,0.45);
+        }
+
         .status {
             margin-top: 8px;
             padding: 10px 16px;
@@ -157,6 +180,11 @@
         <input type="color" id="colorPicker" value="#ff6a00" title="Pick your color" />
         <button class="btn" id="applyColorBtn">Set Color</button>
 
+        <div class="tool-toggle" role="group" aria-label="Brush tools">
+            <button class="btn tool active" id="toolPen" aria-pressed="true" title="Pen">✏️ Pen</button>
+            <button class="btn tool" id="toolSkull" aria-pressed="false" title="Skull Brush">💀 Skull</button>
+        </div>
+
         <button class="btn" id="clearBtn">Clear Canvas</button>
     </div>
     
@@ -166,6 +194,7 @@
         let socket;
         let myId;
         let myColor;
+        let currentTool = 'pen'; // 'pen' | 'skull'
         let isDrawing = false;
         let lastX, lastY;
         const peers = new Map(); // userId -> { color, drawing, lastX, lastY }
@@ -232,10 +261,17 @@
                 peer.lastX = data.x;
                 peer.lastY = data.y;
                 peers.set(userId, peer);
-
-                stroke(peer.color);
-                strokeWeight(3);
-                point(data.x, data.y);
+                if (data.tool === 'skull') {
+                    push();
+                    noStroke();
+                    textSize(28);
+                    text('💀', data.x, data.y);
+                    pop();
+                } else {
+                    stroke(peer.color);
+                    strokeWeight(3);
+                    point(data.x, data.y);
+                }
             });
             
             socket.on('drawingMove', (data) => {
@@ -243,9 +279,17 @@
                 const userId = data.userId;
                 const peer = peers.get(userId);
                 if (!peer || !peer.drawing) return;
-                stroke(peer.color);
-                strokeWeight(3);
-                line(peer.lastX, peer.lastY, data.x, data.y);
+                if (data.tool === 'skull') {
+                    push();
+                    noStroke();
+                    textSize(28);
+                    text('💀', data.x, data.y);
+                    pop();
+                } else {
+                    stroke(peer.color);
+                    strokeWeight(3);
+                    line(peer.lastX, peer.lastY, data.x, data.y);
+                }
                 peer.lastX = data.x;
                 peer.lastY = data.y;
             });
@@ -284,32 +328,50 @@
                 lastX = mouseX;
                 lastY = mouseY;
                 
-                // Draw point
-                stroke(myColor);
-                strokeWeight(3);
-                point(mouseX, mouseY);
+                // Draw start
+                if (currentTool === 'skull') {
+                    push();
+                    noStroke();
+                    textSize(28);
+                    text('💀', mouseX, mouseY);
+                    pop();
+                } else {
+                    stroke(myColor);
+                    strokeWeight(3);
+                    point(mouseX, mouseY);
+                }
                 
                 // Send to other users
                 socket.emit('drawingStart', {
                     x: mouseX,
                     y: mouseY,
-                    color: myColor
+                    color: myColor,
+                    tool: currentTool
                 });
             }
         }
 
         function mouseDragged() {
             if (isDrawing && myColor) {
-                // Draw line
-                stroke(myColor);
-                strokeWeight(3);
-                line(lastX, lastY, mouseX, mouseY);
+                if (currentTool === 'skull') {
+                    push();
+                    noStroke();
+                    textSize(28);
+                    text('💀', mouseX, mouseY);
+                    pop();
+                } else {
+                    // Draw line
+                    stroke(myColor);
+                    strokeWeight(3);
+                    line(lastX, lastY, mouseX, mouseY);
+                }
                 
                 // Send to other users
                 socket.emit('drawingMove', {
                     x: mouseX,
                     y: mouseY,
-                    color: myColor
+                    color: myColor,
+                    tool: currentTool
                 });
                 
                 lastX = mouseX;
@@ -362,15 +424,31 @@
                         lastY = stroke.y;
                         
                         console.log(`Drawing start at (${stroke.x}, ${stroke.y}) with color ${stroke.color}`);
-                        stroke(stroke.color);
-                        strokeWeight(3);
-                        point(stroke.x, stroke.y);
+                        if (stroke.tool === 'skull') {
+                            push();
+                            noStroke();
+                            textSize(28);
+                            text('💀', stroke.x, stroke.y);
+                            pop();
+                        } else {
+                            stroke(stroke.color);
+                            strokeWeight(3);
+                            point(stroke.x, stroke.y);
+                        }
                         strokeCount++;
                     } else if (stroke.type === 'move' && currentStroke) {
                         console.log(`Drawing line from (${lastX}, ${lastY}) to (${stroke.x}, ${stroke.y}) with color ${stroke.color}`);
-                        stroke(stroke.color);
-                        strokeWeight(3);
-                        line(lastX, lastY, stroke.x, stroke.y);
+                        if (stroke.tool === 'skull') {
+                            push();
+                            noStroke();
+                            textSize(28);
+                            text('💀', stroke.x, stroke.y);
+                            pop();
+                        } else {
+                            stroke(stroke.color);
+                            strokeWeight(3);
+                            line(lastX, lastY, stroke.x, stroke.y);
+                        }
                         lastX = stroke.x;
                         lastY = stroke.y;
                         moveCount++;
@@ -403,6 +481,19 @@
             if (!newColor) return;
             socket.emit('setColor', { color: newColor });
         });
+
+        // Tool toggle handlers
+        const penBtn = document.getElementById('toolPen');
+        const skullBtn = document.getElementById('toolSkull');
+        function setTool(tool) {
+            currentTool = tool;
+            penBtn.classList.toggle('active', tool === 'pen');
+            skullBtn.classList.toggle('active', tool === 'skull');
+            penBtn.setAttribute('aria-pressed', tool === 'pen' ? 'true' : 'false');
+            skullBtn.setAttribute('aria-pressed', tool === 'skull' ? 'true' : 'false');
+        }
+        penBtn.addEventListener('click', () => setTool('pen'));
+        skullBtn.addEventListener('click', () => setTool('skull'));
 
         // Prevent context menu on canvas
         document.addEventListener('contextmenu', (e) => {

@@ -42,17 +42,29 @@ io.on('connection', (socket) => {
     console.log(`🎨 Assigned ${assignedColor.name} to ${socket.id}`);
     
     // Send color to the user
-    socket.emit('colorAssigned', assignedColor);
+    socket.emit('colorAssigned', {
+      color: assignedColor.color,
+      colorName: assignedColor.name,
+      userId: socket.id
+    });
     
     // Send other users' colors to this user
     userColors.forEach((color, userId) => {
       if (userId !== socket.id) {
-        socket.emit('otherUserColor', color);
+        socket.emit('otherUserColor', {
+          color: color.color,
+          colorName: color.name,
+          userId
+        });
       }
     });
     
     // Notify other users about this user's color
-    socket.broadcast.emit('otherUserColor', assignedColor);
+    socket.broadcast.emit('otherUserColor', {
+      color: assignedColor.color,
+      colorName: assignedColor.name,
+      userId: socket.id
+    });
     
     // Send current canvas state to the new user
     if (canvasState.length > 0) {
@@ -74,7 +86,12 @@ io.on('connection', (socket) => {
       timestamp: Date.now()
     });
     
-    socket.broadcast.emit('drawingStart', data);
+    socket.broadcast.emit('drawingStart', {
+      x: data.x,
+      y: data.y,
+      color: data.color,
+      userId: socket.id
+    });
   });
 
   // Handle drawing movement
@@ -88,7 +105,12 @@ io.on('connection', (socket) => {
       timestamp: Date.now()
     });
     
-    socket.broadcast.emit('drawingMove', data);
+    socket.broadcast.emit('drawingMove', {
+      x: data.x,
+      y: data.y,
+      color: data.color,
+      userId: socket.id
+    });
   });
 
   // Handle drawing end
@@ -101,7 +123,7 @@ io.on('connection', (socket) => {
       timestamp: Date.now()
     });
     
-    socket.broadcast.emit('drawingEnd');
+    socket.broadcast.emit('drawingEnd', { userId: socket.id });
   });
 
   // Handle canvas clear
@@ -112,6 +134,27 @@ io.on('connection', (socket) => {
     canvasState.length = 0;
     
     io.emit('canvasCleared');
+  });
+
+  // Handle user color update
+  socket.on('setColor', (data) => {
+    const requested = data && typeof data.color === 'string' ? data.color.trim() : '';
+    const isValidHex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(requested);
+    if (!isValidHex) return;
+
+    userColors.set(socket.id, { color: requested, name: requested });
+
+    socket.emit('colorAssigned', {
+      color: requested,
+      colorName: requested,
+      userId: socket.id
+    });
+
+    socket.broadcast.emit('otherUserColor', {
+      color: requested,
+      colorName: requested,
+      userId: socket.id
+    });
   });
 
   // Handle disconnection

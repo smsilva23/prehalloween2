@@ -100,6 +100,9 @@
             <span id="otherColorText">Other User</span>
         </div>
         
+        <input type="color" id="colorPicker" value="#4444ff" title="Pick your color" />
+        <button class="clear-btn" id="applyColorBtn" style="background:#4444ff">Set Color</button>
+
         <button class="clear-btn" id="clearBtn">Clear Canvas</button>
     </div>
     
@@ -107,12 +110,11 @@
 
     <script>
         let socket;
+        let myId;
         let myColor;
-        let otherColor;
         let isDrawing = false;
         let lastX, lastY;
-        let otherUserDrawing = false;
-        let otherLastX, otherLastY;
+        const peers = new Map(); // userId -> { color, drawing, lastX, lastY }
 
         // Initialize p5.js sketch
         function setup() {
@@ -141,57 +143,63 @@
             
             // Handle color assignment
             socket.on('colorAssigned', (data) => {
+                myId = data.userId;
                 myColor = data.color;
                 document.getElementById('myColorCircle').style.backgroundColor = myColor;
-                document.getElementById('myColorText').textContent = `Your Color (${data.colorName})`;
-                console.log('My color:', myColor);
+                document.getElementById('myColorText').textContent = `Your Color (${data.color || ''})`;
+                const picker = document.getElementById('colorPicker');
+                const applyBtn = document.getElementById('applyColorBtn');
+                if (picker && typeof myColor === 'string' && myColor.startsWith('#')) picker.value = myColor;
+                if (applyBtn) applyBtn.style.background = myColor;
+                console.log('My id:', myId, 'My color:', myColor);
             });
             
             // Handle other user's color
             socket.on('otherUserColor', (data) => {
-                otherColor = data.color;
-                document.getElementById('otherColorCircle').style.backgroundColor = otherColor;
-                document.getElementById('otherColorText').textContent = `Other User (${data.colorName})`;
-                console.log('Other user color:', otherColor);
+                const userId = data.userId;
+                if (!peers.has(userId)) {
+                    peers.set(userId, { color: data.color, drawing: false, lastX: 0, lastY: 0 });
+                } else {
+                    peers.get(userId).color = data.color;
+                }
+                document.getElementById('otherColorCircle').style.backgroundColor = data.color;
+                document.getElementById('otherColorText').textContent = `Other User (${data.color || ''})`;
+                console.log('Other user color set:', userId, data.color);
             });
             
-            // Handle drawing data from other users
-            socket.on('drawing', (data) => {
-                if (data.color !== myColor) {
-                    otherUserDrawing = true;
-                    otherLastX = data.x;
-                    otherLastY = data.y;
-                    
-                    stroke(data.color);
-                    strokeWeight(3);
-                    point(data.x, data.y);
-                }
-            });
+            // Legacy 'drawing' event removed; we use start/move/end per user
             
             socket.on('drawingStart', (data) => {
-                if (data.color !== myColor) {
-                    otherUserDrawing = true;
-                    otherLastX = data.x;
-                    otherLastY = data.y;
-                    
-                    stroke(data.color);
-                    strokeWeight(3);
-                    point(data.x, data.y);
-                }
+                if (data.userId === myId) return;
+                const userId = data.userId;
+                const peer = peers.get(userId) || { color: data.color, drawing: false, lastX: 0, lastY: 0 };
+                peer.color = data.color;
+                peer.drawing = true;
+                peer.lastX = data.x;
+                peer.lastY = data.y;
+                peers.set(userId, peer);
+
+                stroke(peer.color);
+                strokeWeight(3);
+                point(data.x, data.y);
             });
             
             socket.on('drawingMove', (data) => {
-                if (data.color !== myColor && otherUserDrawing) {
-                    stroke(data.color);
-                    strokeWeight(3);
-                    line(otherLastX, otherLastY, data.x, data.y);
-                    otherLastX = data.x;
-                    otherLastY = data.y;
-                }
+                if (data.userId === myId) return;
+                const userId = data.userId;
+                const peer = peers.get(userId);
+                if (!peer || !peer.drawing) return;
+                stroke(peer.color);
+                strokeWeight(3);
+                line(peer.lastX, peer.lastY, data.x, data.y);
+                peer.lastX = data.x;
+                peer.lastY = data.y;
             });
             
-            socket.on('drawingEnd', () => {
-                otherUserDrawing = false;
+            socket.on('drawingEnd', (data) => {
+                if (!data || data.userId === myId) return;
+                const peer = peers.get(data.userId);
+                if (peer) peer.drawing = false;
             });
             
             // Clear canvas event
@@ -333,6 +341,14 @@
 
         // Event listeners
         document.getElementById('clearBtn').addEventListener('click', clearCanvas);
+
+        // Apply color button handler
+        document.getElementById('applyColorBtn').addEventListener('click', () => {
+            const picker = document.getElementById('colorPicker');
+            const newColor = (picker && picker.value) || myColor;
+            if (!newColor) return;
+            socket.emit('setColor', { color: newColor });
+        });
 
         // Prevent context menu on canvas
         document.addEventListener('contextmenu', (e) => {
